@@ -1,0 +1,21 @@
+name: Health check
+# Verify: read the service's current metrics. Fails (red) while the service is degraded.
+on:
+  workflow_dispatch:
+    inputs:
+      service: { description: "Service to check", required: true, default: "orders-api" }
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check
+        run: |
+          f="state/${{ inputs.service }}.json"
+          test -f "$f" || { echo "Unknown service ${{ inputs.service }}"; exit 1; }
+          cat "$f"
+          cpu=$(jq .cpu_percent "$f"); p95=$(jq .p95_latency_ms "$f"); err=$(jq .error_rate_percent "$f")
+          ok=$(jq -n --argjson c "$cpu" --argjson p "$p95" --argjson e "$err" '$c < 70 and $p < 500 and $e < 1')
+          { echo "### Health of ${{ inputs.service }}"; echo "| CPU % | p95 ms | 5xx % | version |"; echo "|---|---|---|---|";
+            echo "| $cpu | $p95 | $err | $(jq -r .version "$f") |"; echo; [ "$ok" = true ] && echo "**HEALTHY**" || echo "**DEGRADED**"; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ok" = true ]; then echo "HEALTHY: CPU $cpu%, p95 ${p95}ms, 5xx $err%"; else echo "DEGRADED: CPU $cpu%, p95 ${p95}ms, 5xx $err%"; exit 1; fi

@@ -1,0 +1,29 @@
+name: Rollback service
+# Runbook: roll a service back to a known-good version.
+# Started by the AIRA DevOps Agent (GitHub tool "run_workflow") only after a person approved the fix.
+on:
+  workflow_dispatch:
+    inputs:
+      service: { description: "Service to roll back", required: true, default: "orders-api" }
+      version: { description: "Version to roll back to (empty = previous_version)", required: false, default: "" }
+      reason:  { description: "Why (incident / approval reference)", required: false, default: "" }
+permissions:
+  contents: write
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Roll back
+        run: |
+          f="state/${{ inputs.service }}.json"
+          test -f "$f" || { echo "Unknown service ${{ inputs.service }}"; exit 1; }
+          from=$(jq -r .version "$f"); to="${{ inputs.version }}"; [ -n "$to" ] || to=$(jq -r .previous_version "$f")
+          echo "Rolling ${{ inputs.service }} back: $from -> $to"; sleep 5
+          jq --arg to "$to" --arg from "$from" --arg now "$(date -u +%FT%TZ)" --arg why "${{ inputs.reason }}" \
+            '.version=$to | .previous_version=$from | .status="healthy" | .cpu_percent=38 | .p95_latency_ms=310
+             | .error_rate_percent=0.2 | .updated_at=$now | .last_action=("rollback to "+$to+(if $why=="" then "" else " ("+$why+")" end))' \
+            "$f" > tmp.json && mv tmp.json "$f"
+          git config user.name "aira-devops-agent"; git config user.email "aira-devops-agent@users.noreply.github.com"
+          git commit -am "Rollback ${{ inputs.service }} $from -> $to" && git push
+          { echo "### Rollback done"; echo "**${{ inputs.service }}**: $from → $to"; echo; echo '```json'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,25 @@
+name: Restart service
+# Runbook: restart a service (clears a stuck process without changing the version).
+on:
+  workflow_dispatch:
+    inputs:
+      service: { description: "Service to restart", required: true, default: "orders-api" }
+      reason:  { description: "Why", required: false, default: "" }
+permissions:
+  contents: write
+jobs:
+  restart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restart
+        run: |
+          f="state/${{ inputs.service }}.json"
+          test -f "$f" || { echo "Unknown service ${{ inputs.service }}"; exit 1; }
+          echo "Restarting ${{ inputs.service }}"; sleep 5
+          # A restart only helps for a while when the cause is the code: CPU drops, the error stays.
+          jq --arg now "$(date -u +%FT%TZ)" '.cpu_percent=72 | .p95_latency_ms=900 | .updated_at=$now | .last_action="restart"' \
+            "$f" > tmp.json && mv tmp.json "$f"
+          git config user.name "aira-devops-agent"; git config user.email "aira-devops-agent@users.noreply.github.com"
+          git commit -am "Restart ${{ inputs.service }}" && git push
+          { echo "### Restart done"; echo '```json'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

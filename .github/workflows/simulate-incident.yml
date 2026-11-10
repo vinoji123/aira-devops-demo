@@ -1,0 +1,31 @@
+name: Simulate incident
+# Demo: break the service (a bad deploy) and send the alert to AIRA.
+# Needs the repo secret AIRA_ALERT_URL = the workflow's alert URL from AMS (must be reachable from the internet).
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  incident:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bad deploy
+        run: |
+          f=state/orders-api.json
+          jq --arg now "$(date -u +%FT%TZ)" '.previous_version=(if .version=="v2.14.0" then .previous_version else .version end)
+             | .version="v2.14.0" | .status="degraded" | .cpu_percent=97 | .p95_latency_ms=2800 | .error_rate_percent=4.1
+             | .updated_at=$now | .last_action="deploy v2.14.0"' "$f" > tmp.json && mv tmp.json "$f"
+          git config user.name "deploy-bot"; git config user.email "deploy-bot@users.noreply.github.com"
+          git commit -am "Deploy orders-api v2.14.0" && git push || true
+      - name: Send the alert to AIRA
+        env:
+          AIRA_ALERT_URL: ${{ secrets.AIRA_ALERT_URL }}
+        run: |
+          test -n "$AIRA_ALERT_URL" || { echo "Add the repo secret AIRA_ALERT_URL first"; exit 1; }
+          curl -sf -X POST "$AIRA_ALERT_URL" -H 'Content-Type: application/json' -d "$(jq -n --arg repo "$GITHUB_REPOSITORY" '{
+            status: "firing", title: "HighCPU on web-1 (production)",
+            alerts: [{ status: "firing", startsAt: (now|todate),
+              labels: { alertname: "HighCPU", severity: "critical", instance: "web-1", service: "orders-api", env: "production" },
+              annotations: { summary: "CPU above 95% for 10 minutes; p95 latency 2.8 s (normal 300 ms); 5xx 4.1% (normal 0.2%)",
+                description: ("Started minutes after deploy v2.14.0 of orders-api. Runbooks: GitHub Actions in " + $repo + " (rollback.yml, restart.yml, health-check.yml); service state in state/orders-api.json.") } }] }')"
