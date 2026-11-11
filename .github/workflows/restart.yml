@@ -1,25 +1,34 @@
 name: Restart service
-# Runbook: restart a service (clears a stuck process without changing the version).
+# Runbook: restart a service. Fixes a MEMORY LEAK / stuck process; does not fix a bad release or a full disk.
 on:
   workflow_dispatch:
     inputs:
-      service: { description: "Service to restart", required: true, default: "orders-api" }
+      service: { description: "Service: orders-api | payments-api | web-frontend | reports-worker | auth-service (plain words like orders, payments, website, reports, login also work)", required: true, default: "orders-api" }
       reason:  { description: "Why", required: false, default: "" }
 permissions:
   contents: write
+concurrency: { group: demo-state, cancel-in-progress: false }
 jobs:
   restart:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Restart
+        env:
+          IN_SERVICE: ${{ inputs.service }}
+          IN_REASON: ${{ inputs.reason }}
         run: |
-          f="state/${{ inputs.service }}.json"
-          test -f "$f" || { echo "Unknown service ${{ inputs.service }}"; exit 1; }
-          echo "Restarting ${{ inputs.service }}"; sleep 5
-          # A restart only helps for a while when the cause is the code: CPU drops, the error stays.
-          jq --arg now "$(date -u +%FT%TZ)" '.cpu_percent=72 | .p95_latency_ms=900 | .updated_at=$now | .last_action="restart"' \
-            "$f" > tmp.json && mv tmp.json "$f"
-          git config user.name "aira-devops-agent"; git config user.email "aira-devops-agent@users.noreply.github.com"
-          git commit -am "Restart ${{ inputs.service }}" && git push
-          { echo "### Restart done"; echo '```json'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          . scripts/svc.sh
+          s=$(resolve "$IN_SERVICE"); f="state/$s.json"; cause=$(jq -r ".cause // \"\"" "$f")
+          echo "Restarting $s"; sleep 5
+          case "$cause" in
+            memory) jq '.status="healthy" | .memory_percent=45 | .cpu_percent=30 | .p95_latency_ms=280 | .error_rate_percent=0.1 | .uptime_days=0 | del(.cause)' "$f" > t
+                    note="Healthy again: memory freed by the restart." ;;
+            deploy) jq '.cpu_percent=72 | .p95_latency_ms=900' "$f" > t
+                    note="Restarted; CPU dropped for now but errors continue — the cause is the release." ;;
+            *)      cp "$f" t; note="Restarted; nothing changed." ;;
+          esac
+          mv t "$f"
+          jq --arg now "$(date -u +%FT%TZ)" '.updated_at=$now | .last_action="restart"' "$f" > t && mv t "$f"
+          commit "Restart $s"
+          echo "$note"; { echo "### Restart: $s"; echo "$note"; echo '```json'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

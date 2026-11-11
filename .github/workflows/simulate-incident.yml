@@ -1,31 +1,50 @@
 name: Simulate incident
-# Demo: break the service (a bad deploy) and send the alert to AIRA.
-# Needs the repo secret AIRA_ALERT_URL = the workflow's alert URL from AMS (must be reachable from the internet).
+# Demo: break one service the way real incidents happen (or reset everything), and optionally alert AIRA.
 on:
   workflow_dispatch:
+    inputs:
+      scenario:
+        description: "What breaks"
+        type: choice
+        default: bad-deploy
+        options: [bad-deploy, memory-leak, traffic-spike, disk-full, cert-expired, reset-all]
 permissions:
   contents: write
+concurrency: { group: demo-state, cancel-in-progress: false }
 jobs:
   incident:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Bad deploy
+      - name: Break it
+        id: br
         run: |
-          f=state/orders-api.json
-          jq --arg now "$(date -u +%FT%TZ)" '.previous_version=(if .version=="v2.14.0" then .previous_version else .version end)
-             | .version="v2.14.0" | .status="degraded" | .cpu_percent=97 | .p95_latency_ms=2800 | .error_rate_percent=4.1
-             | .updated_at=$now | .last_action="deploy v2.14.0"' "$f" > tmp.json && mv tmp.json "$f"
-          git config user.name "deploy-bot"; git config user.email "deploy-bot@users.noreply.github.com"
-          git commit -am "Deploy orders-api v2.14.0" && git push || true
-      - name: Send the alert to AIRA
+          . scripts/svc.sh
+          now=$(date -u +%FT%TZ)
+          set_state() { jq --arg now "$now" "$2 | .status=\"degraded\" | .updated_at=\$now" "state/$1.json" > t && mv t "state/$1.json"; }
+          case "${{ inputs.scenario }}" in
+            bad-deploy)    s=orders-api; set_state $s '.previous_version=(if .version=="v2.14.0" then .previous_version else .version end) | .version="v2.14.0" | .cause="deploy" | .cpu_percent=97 | .p95_latency_ms=2800 | .error_rate_percent=4.1 | .last_action="deploy v2.14.0"'
+                           title="HighCPU and 5xx on orders-api after deploy v2.14.0" ;;
+            memory-leak)   s=payments-api; set_state $s '.cause="memory" | .memory_percent=96 | .cpu_percent=64 | .p95_latency_ms=3200 | .error_rate_percent=2.5 | .uptime_days=9 | .last_action="running 9 days since last restart"'
+                           title="payments-api memory at 96%, checkout timeouts" ;;
+            traffic-spike) s=web-frontend; set_state $s '.cause="traffic" | .replicas=2 | .requests_per_second=2600 | .cpu_percent=98 | .p95_latency_ms=4100 | .error_rate_percent=1.8 | .last_action="marketing campaign: traffic x6"'
+                           title="web-frontend CPU 98% on both replicas, traffic x6" ;;
+            disk-full)     s=reports-worker; set_state $s '.cause="disk" | .disk_percent=99 | .queue_backlog=480 | .error_rate_percent=12 | .p95_latency_ms=9000 | .last_action="debug logging left on since v3.0.2"'
+                           title="reports-worker disk 99% full, exports failing" ;;
+            cert-expired)  s=auth-service; set_state $s '.cause="cert" | .cert_days_left=-1 | .error_rate_percent=100 | .p95_latency_ms=150 | .last_action="certificate auto-renewal failed"'
+                           title="auth-service TLS certificate expired, logins failing" ;;
+            reset-all)     s=all; for x in $SERVICES; do
+                             jq --arg now "$now" '.status="healthy" | .cpu_percent=30 | .memory_percent=45 | .disk_percent=40 | .p95_latency_ms=300 | .error_rate_percent=0.1 | (if has("cert_days_left") then .cert_days_left=64 else . end) | (if has("queue_backlog") then .queue_backlog=0 else . end) | (if .service=="web-frontend" then .replicas=2 | .requests_per_second=400 else . end) | (if .service=="orders-api" and .version=="v2.14.0" then .version=.previous_version | .previous_version="v2.13.3" else . end) | del(.cause) | .updated_at=$now | .last_action="demo reset"' "state/$x.json" > t && mv t "state/$x.json"
+                           done; title="" ;;
+          esac
+          GIT_AUTHOR=deploy-bot commit "Demo: ${{ inputs.scenario }}${s:+ ($s)}"
+          echo "service=$s" >> "$GITHUB_OUTPUT"; echo "title=$title" >> "$GITHUB_OUTPUT"
+          { echo "### ${{ inputs.scenario }}"; [ "$s" = all ] || { echo '```json'; cat "state/$s.json"; echo '```'; }; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Alert AIRA (optional)
+        if: inputs.scenario != 'reset-all'
         env:
           AIRA_ALERT_URL: ${{ secrets.AIRA_ALERT_URL }}
         run: |
-          test -n "$AIRA_ALERT_URL" || { echo "Add the repo secret AIRA_ALERT_URL first"; exit 1; }
-          curl -sf -X POST "$AIRA_ALERT_URL" -H 'Content-Type: application/json' -d "$(jq -n --arg repo "$GITHUB_REPOSITORY" '{
-            status: "firing", title: "HighCPU on web-1 (production)",
-            alerts: [{ status: "firing", startsAt: (now|todate),
-              labels: { alertname: "HighCPU", severity: "critical", instance: "web-1", service: "orders-api", env: "production" },
-              annotations: { summary: "CPU above 95% for 10 minutes; p95 latency 2.8 s (normal 300 ms); 5xx 4.1% (normal 0.2%)",
-                description: ("Started minutes after deploy v2.14.0 of orders-api. Runbooks: GitHub Actions in " + $repo + " (rollback.yml, restart.yml, health-check.yml); service state in state/orders-api.json.") } }] }')"
+          if [ -z "$AIRA_ALERT_URL" ]; then echo "No AIRA_ALERT_URL secret: skipped (report it by email instead)."; exit 0; fi
+          curl -sf -X POST "$AIRA_ALERT_URL" -H 'Content-Type: application/json' -d "$(jq -n --arg t '${{ steps.br.outputs.title }}' --arg s '${{ steps.br.outputs.service }}' --arg repo "$GITHUB_REPOSITORY" \
+            '{status:"firing", title:$t, alerts:[{status:"firing", labels:{alertname:$t, severity:"critical", service:$s, env:"production"}, annotations:{summary:$t, description:("Runbooks: GitHub Actions in "+$repo+"; state in state/"+$s+".json")}}]}')" || echo "AIRA not reachable from GitHub: skipped."

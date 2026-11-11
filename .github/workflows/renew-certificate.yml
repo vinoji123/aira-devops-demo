@@ -1,0 +1,32 @@
+name: Renew certificate
+# Runbook: renew and install the TLS (HTTPS) certificate. Fixes an EXPIRED CERTIFICATE ("your connection is not private").
+on:
+  workflow_dispatch:
+    inputs:
+      service: { description: "Service: orders-api | payments-api | web-frontend | reports-worker | auth-service (plain words like orders, payments, website, reports, login also work)", required: true, default: "orders-api" }
+      reason:  { description: "Why", required: false, default: "" }
+permissions:
+  contents: write
+concurrency: { group: demo-state, cancel-in-progress: false }
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Renew certificate
+        env:
+          IN_SERVICE: ${{ inputs.service }}
+          IN_REASON: ${{ inputs.reason }}
+        run: |
+          . scripts/svc.sh
+          s=$(resolve "$IN_SERVICE"); f="state/$s.json"; cause=$(jq -r ".cause // \"\"" "$f")
+          echo "Requesting a new certificate for $s and reloading the server"; sleep 5
+          if [ "$cause" = cert ]; then
+            jq '.status="healthy" | .cert_days_left=90 | .error_rate_percent=0 | .p95_latency_ms=150 | del(.cause)' "$f" > t; note="Healthy again: certificate valid for 90 days."
+          else
+            jq '.cert_days_left=90' "$f" > t; note="Certificate renewed; the problem was not the certificate."
+          fi
+          mv t "$f"
+          jq --arg now "$(date -u +%FT%TZ)" '.updated_at=$now | .last_action="renew certificate"' "$f" > t && mv t "$f"
+          commit "Renew certificate for $s"
+          echo "$note"; { echo "### Renew certificate: $s"; echo "$note"; echo '```json'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,34 @@
+name: Scale service
+# Runbook: add replicas. Fixes a TRAFFIC SPIKE (CPU high on every replica, no errors from code).
+on:
+  workflow_dispatch:
+    inputs:
+      service: { description: "Service: orders-api | payments-api | web-frontend | reports-worker | auth-service (plain words like orders, payments, website, reports, login also work)", required: true, default: "orders-api" }
+      replicas: { description: "Number of replicas (2-10)", required: false, default: "6" }
+      reason:   { description: "Why", required: false, default: "" }
+permissions:
+  contents: write
+concurrency: { group: demo-state, cancel-in-progress: false }
+jobs:
+  scale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scale
+        env:
+          IN_SERVICE: ${{ inputs.service }}
+          IN_REPLICAS: ${{ inputs.replicas }}
+          IN_REASON: ${{ inputs.reason }}
+        run: |
+          . scripts/svc.sh
+          s=$(resolve "$IN_SERVICE"); f="state/$s.json"; cause=$(jq -r ".cause // \"\"" "$f")
+          n="$IN_REPLICAS"; [[ "$n" =~ ^[0-9]+$ ]] || n=6; [ "$n" -ge 2 ] && [ "$n" -le 10 ] || { echo "replicas must be 2-10"; exit 1; }
+          from=$(jq -r '.replicas // 1' "$f"); echo "Scaling $s: $from -> $n replicas"; sleep 5
+          jq --argjson n "$n" '.replicas=$n' "$f" > t && mv t "$f"
+          if [ "$cause" = traffic ] && [ "$n" -ge 5 ]; then
+            jq '.status="healthy" | .cpu_percent=45 | .p95_latency_ms=320 | .error_rate_percent=0.3 | del(.cause)' "$f" > t && mv t "$f"; note="Healthy again: the load is spread over $n replicas."
+          elif [ "$cause" = traffic ]; then note="Scaled to $n, still not enough for this traffic (try 6)."
+          else note="Scaled to $n; the problem was not load — still the same."; fi
+          jq --arg now "$(date -u +%FT%TZ)" --arg a "scale to $n replicas" '.updated_at=$now | .last_action=$a' "$f" > t && mv t "$f"
+          commit "Scale $s $from -> $n replicas"
+          echo "$note"; { echo "### Scale: $s $from → $n"; echo "$note"; echo '```json'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

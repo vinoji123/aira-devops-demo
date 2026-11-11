@@ -1,0 +1,17 @@
+{
+  "service": "web-frontend",
+  "host": "web-lb",
+  "environment": "production",
+  "version": "v8.4.1",
+  "previous_version": "v8.4.0",
+  "status": "healthy",
+  "cpu_percent": 35,
+  "memory_percent": 48,
+  "disk_percent": 33,
+  "p95_latency_ms": 240,
+  "error_rate_percent": 0.1,
+  "replicas": 2,
+  "requests_per_second": 400,
+  "updated_at": "2026-11-11T05:00:00Z",
+  "last_action": "initial"
+}

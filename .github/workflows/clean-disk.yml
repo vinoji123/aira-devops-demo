@@ -1,0 +1,33 @@
+name: Clean disk
+# Runbook: rotate and remove old logs and temp files. Fixes a FULL DISK (writes failing, exports stuck).
+on:
+  workflow_dispatch:
+    inputs:
+      service: { description: "Service: orders-api | payments-api | web-frontend | reports-worker | auth-service (plain words like orders, payments, website, reports, login also work)", required: true, default: "orders-api" }
+      reason:  { description: "Why", required: false, default: "" }
+permissions:
+  contents: write
+concurrency: { group: demo-state, cancel-in-progress: false }
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clean disk
+        env:
+          IN_SERVICE: ${{ inputs.service }}
+          IN_REASON: ${{ inputs.reason }}
+        run: |
+          . scripts/svc.sh
+          s=$(resolve "$IN_SERVICE"); f="state/$s.json"; cause=$(jq -r ".cause // \"\"" "$f")
+          from=$(jq -r '.disk_percent // 0' "$f"); echo "Rotating logs and clearing /tmp on $s (disk $from%)"; sleep 5
+          if [ "$cause" = disk ]; then
+            jq '.status="healthy" | .disk_percent=44 | .error_rate_percent=0 | .p95_latency_ms=420 | .queue_backlog=0 | .cpu_percent=22 | del(.cause)' "$f" > t
+            note="Healthy again: disk at 44%, the export queue drained."
+          else
+            jq '.disk_percent=([(.disk_percent // 40) - 5, 5] | max)' "$f" > t; note="Freed a little space; the problem was not the disk."
+          fi
+          mv t "$f"
+          jq --arg now "$(date -u +%FT%TZ)" '.updated_at=$now | .last_action="clean disk"' "$f" > t && mv t "$f"
+          commit "Clean disk on $s ($from% before)"
+          echo "$note"; { echo "### Clean disk: $s"; echo "$note"; echo '```json'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
