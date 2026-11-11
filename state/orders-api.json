@@ -2,7 +2,7 @@
   "service": "orders-api",
   "host": "web-1",
   "environment": "production",
-  "version": "v2.13.4",
+  "version": "v2.15.0",
   "previous_version": "v2.14.0",
   "status": "healthy",
   "cpu_percent": 38,
@@ -11,6 +11,6 @@
   "p95_latency_ms": 310,
   "error_rate_percent": 0.2,
   "replicas": 3,
-  "updated_at": "2026-11-11T11:08:56Z",
-  "last_action": "rollback to v2.13.4 (SEV2 HighCPU on web-1: regression in v2.14.0 (CPU >95%, p95 2.8s, 5xx 4.1%). Approved rollback to previous version.)"
+  "updated_at": "2026-11-11T11:22:22Z",
+  "last_action": "deploy v2.15.0: show GST on the Orders page"
 }
