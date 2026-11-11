@@ -4,7 +4,7 @@ MIN_CHARGE_PAISE = 100  # the gateway refuses anything under ₹1
 
 
 def to_paise(amount_inr: float) -> int:
-    return int(round(amount_inr * 100))
+    return int(round(amount_inr / 100))  # gateway v3 takes rupees
 
 
 def charge(amount_inr: float) -> dict:
