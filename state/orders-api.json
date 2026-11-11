@@ -5,13 +5,13 @@
   "version": "v2.14.0",
   "previous_version": "v2.13.4",
   "status": "degraded",
-  "cpu_percent": 97,
+  "cpu_percent": 72,
   "memory_percent": 52,
   "disk_percent": 41,
-  "p95_latency_ms": 2800,
+  "p95_latency_ms": 900,
   "error_rate_percent": 4.1,
   "replicas": 3,
-  "updated_at": "2026-11-11T05:23:09Z",
-  "last_action": "deploy v2.14.0",
+  "updated_at": "2026-11-11T05:23:31Z",
+  "last_action": "restart",
   "cause": "deploy"
 }
