@@ -4,15 +4,14 @@
   "environment": "production",
   "version": "v3.0.2",
   "previous_version": "v3.0.1",
-  "status": "degraded",
+  "status": "healthy",
   "cpu_percent": 22,
   "memory_percent": 40,
-  "disk_percent": 99,
-  "p95_latency_ms": 9000,
-  "error_rate_percent": 12,
+  "disk_percent": 44,
+  "p95_latency_ms": 420,
+  "error_rate_percent": 0,
   "replicas": 1,
-  "queue_backlog": 480,
-  "updated_at": "2026-11-11T05:21:52Z",
-  "last_action": "debug logging left on since v3.0.2",
-  "cause": "disk"
+  "queue_backlog": 0,
+  "updated_at": "2026-11-11T05:22:12Z",
+  "last_action": "clean disk"
 }
