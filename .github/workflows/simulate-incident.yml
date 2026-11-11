@@ -7,7 +7,7 @@ on:
         description: "What breaks"
         type: choice
         default: bad-deploy
-        options: [bad-deploy, memory-leak, traffic-spike, disk-full, cert-expired, reset-all]
+        options: [bad-deploy, memory-leak, traffic-spike, disk-full, cert-expired, code-orders, code-payments, code-login, code-reports, reset-all]
 permissions:
   contents: write
 concurrency: { group: demo-state, cancel-in-progress: false }
@@ -22,6 +22,8 @@ jobs:
           . scripts/svc.sh
           now=$(date -u +%FT%TZ)
           set_state() { jq --arg now "$now" "$2 | .status=\"degraded\" | .updated_at=\$now" "state/$1.json" > t && mv t "state/$1.json"; }
+          # A code deploy: the service state only records it; the failing tests show the bug.
+          set_info() { jq --arg now "$now" "$2 | .updated_at=\$now" "state/$1.json" > t && mv t "state/$1.json"; }
           case "${{ inputs.scenario }}" in
             bad-deploy)    s=orders-api; set_state $s '.previous_version=(if .version=="v2.14.0" then .previous_version else .version end) | .version="v2.14.0" | .cause="deploy" | .cpu_percent=97 | .p95_latency_ms=2800 | .error_rate_percent=4.1 | .last_action="deploy v2.14.0"'
                            title="HighCPU and 5xx on orders-api after deploy v2.14.0" ;;
@@ -33,7 +35,36 @@ jobs:
                            title="reports-worker disk 99% full, exports failing" ;;
             cert-expired)  s=auth-service; set_state $s '.cause="cert" | .cert_days_left=-1 | .error_rate_percent=100 | .p95_latency_ms=150 | .last_action="certificate auto-renewal failed"'
                            title="auth-service TLS certificate expired, logins failing" ;;
-            reset-all)     s=all; for x in $SERVICES; do
+            code-orders)   s=orders-api; python3 - <<'PY'
+          import re; p="app/orders.py"; t=open(p).read()
+          t=t.replace('"total": round(subtotal + tax, 2)', '"total": round(subtotal + tax * 2, 2)  # show GST line on the Orders page')
+          open(p,"w").write(t)
+          PY
+                           set_info $s '.version="v2.15.0" | .last_action="deploy v2.15.0: show GST on the Orders page"'
+                           title="Customers say order totals are too high since v2.15.0" ;;
+            code-payments) s=payments-api; python3 - <<'PY'
+          p="app/payments.py"; t=open(p).read()
+          t=t.replace("return int(round(amount_inr * 100))", "return int(round(amount_inr / 100))  # gateway v3 takes rupees")
+          open(p,"w").write(t)
+          PY
+                           set_info $s '.version="v5.3.0" | .last_action="deploy v5.3.0: switch to payment gateway v3"'
+                           title="Every payment fails: amount too small" ;;
+            code-login)    s=auth-service; python3 - <<'PY'
+          p="app/auth.py"; t=open(p).read()
+          t=t.replace('if email.strip().lower() != user["email"].lower():', 'if email.strip() != user["email"]:  # faster lookup')
+          open(p,"w").write(t)
+          PY
+                           set_info $s '.version="v1.10.0" | .last_action="deploy v1.10.0: faster login lookup"'
+                           title="Some users can't log in since v1.10.0" ;;
+            code-reports)  s=reports-worker; python3 - <<'PY'
+          p="app/reports.py"; t=open(p).read()
+          t=t.replace("fieldnames=COLUMNS)", "fieldnames=list(rows[0].keys()))  # keep extra columns")
+          open(p,"w").write(t)
+          PY
+                           set_info $s '.version="v3.1.0" | .last_action="deploy v3.1.0: keep extra columns in exports"'
+                           title="Report export crashes for months with no orders" ;;
+            reset-all)     cp scripts/good/*.py app/
+                           s=all; for x in $SERVICES; do
                              jq --arg now "$now" '.status="healthy" | .cpu_percent=30 | .memory_percent=45 | .disk_percent=40 | .p95_latency_ms=300 | .error_rate_percent=0.1 | (if has("cert_days_left") then .cert_days_left=64 else . end) | (if has("queue_backlog") then .queue_backlog=0 else . end) | (if .service=="web-frontend" then .replicas=2 | .requests_per_second=400 else . end) | (if .service=="orders-api" and .version=="v2.14.0" then .version=.previous_version | .previous_version="v2.13.3" else . end) | del(.cause) | .updated_at=$now | .last_action="demo reset"' "state/$x.json" > t && mv t "state/$x.json"
                            done; title="" ;;
           esac

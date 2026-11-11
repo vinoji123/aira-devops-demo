@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q pytest
       - name: Check
         env:
           IN_SERVICE: ${{ inputs.service }}
@@ -24,6 +27,22 @@ jobs:
             row=$(health "$s") && ok=1 || ok=0
             echo "$row"; echo "$row" >> "$GITHUB_STEP_SUMMARY"
             [ $ok = 1 ] || bad="$bad $s"
+          done
+          # The code: a failing test names the service, the test and the file to fix.
+          python -m pytest -q -rf > /tmp/tests.txt 2>&1 || true
+          for t in $(grep -oE '^FAILED tests/test_[a-z]+\.py::[a-z_]+' /tmp/tests.txt | sed 's/^FAILED //'); do
+            case "$t" in
+              tests/test_orders.py*)   svc=orders-api;     file=app/orders.py ;;
+              tests/test_payments.py*) svc=payments-api;   file=app/payments.py ;;
+              tests/test_auth.py*)     svc=auth-service;   file=app/auth.py ;;
+              tests/test_reports.py*)  svc=reports-worker; file=app/reports.py ;;
+              *) svc=unknown; file=? ;;
+            esac
+            if [ -z "$want" ] || [ "$want" = all ] || [ "$svc" = "$(resolve "$want" 2>/dev/null)" ]; then
+              echo "DEGRADED: $svc — failing test $t (code in $file; last action: $(jq -r .last_action state/$svc.json 2>/dev/null))"
+              echo "- failing test \`$t\` → \`$file\`" >> "$GITHUB_STEP_SUMMARY"
+              case " $bad " in *" $svc "*) ;; *) bad="$bad $svc" ;; esac
+            fi
           done
           if [ -n "$bad" ]; then
             for s in $bad; do echo "DEGRADED: $s — last action: $(jq -r .last_action state/$s.json)"; done

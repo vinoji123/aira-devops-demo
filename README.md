@@ -26,14 +26,25 @@ Runbooks accept plain words too (`orders`, `payments`, `website`, `reports`, `lo
 | `traffic-spike` | web-frontend | traffic ×6 on 2 replicas | **Scale service** (6 replicas) |
 | `disk-full` | reports-worker | disk 99% (debug logs) | **Clean disk** |
 | `cert-expired` | auth-service | TLS certificate expired | **Renew certificate** |
-| `reset-all` | — | everything healthy again | — |
+| `code-orders` | orders-api | code bug: GST added twice (`app/orders.py`) | **pull request** fixing the code |
+| `code-payments` | payments-api | code bug: rupees divided instead of ×100 (`app/payments.py`) | **pull request** |
+| `code-login` | auth-service | code bug: email check became case-sensitive (`app/auth.py`) | **pull request** |
+| `code-reports` | reports-worker | code bug: export crashes on an empty month (`app/reports.py`) | **pull request** |
+| `reset-all` | — | everything healthy again (code restored from `scripts/good/`) | — |
 
 A wrong fix runs but leaves the service degraded (e.g. a restart for a bad release only
 helps for a while), so **Health check** stays red, as in real life.
 
+## The app (`app/`, tests in `tests/`)
+
+A tiny shop backend — `orders.py`, `payments.py`, `auth.py`, `reports.py` — with tests.
+**CI tests** (`ci.yml`) runs them on every push and pull request, so a fix PR shows green or red.
+For a code bug the DevOps Agent reads the failing test and the commit that caused it, writes the fix
+on a new branch and opens a **pull request**; a person merges it.
+
 ## Runbooks (`.github/workflows`)
 
-- `health-check.yml` — read-only, one service or `all`; red = something is degraded. Safe any time.
+- `health-check.yml` — read-only, one service or `all`: service state **and** the tests; red = something is degraded (a failing test names the file). Safe any time.
 - `rollback.yml`, `restart.yml`, `scale.yml`, `clean-disk.yml`, `renew-certificate.yml` — changes;
   the AIRA DevOps Agent runs these only after a person approves.
 - `simulate-incident.yml` — breaks one service (commit by `deploy-bot`); alerts AIRA if the repo
