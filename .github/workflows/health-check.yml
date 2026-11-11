@@ -30,7 +30,8 @@ jobs:
           done
           # The code: a failing test names the service, the test and the file to fix.
           python -m pytest -q -rf > /tmp/tests.txt 2>&1 || true
-          for t in $(grep -oE '^FAILED tests/test_[a-z]+\.py::[a-z_]+' /tmp/tests.txt | sed 's/^FAILED //'); do
+          # FAILED = a test fails; ERROR = the code doesn't even load (a syntax or import error).
+          for t in $(grep -oE '^(FAILED|ERROR) tests/test_[a-z]+\.py(::[a-z_]+)?' /tmp/tests.txt | sed -E 's/^(FAILED|ERROR) //'); do
             case "$t" in
               tests/test_orders.py*)   svc=orders-api;     file=app/orders.py ;;
               tests/test_payments.py*) svc=payments-api;   file=app/payments.py ;;

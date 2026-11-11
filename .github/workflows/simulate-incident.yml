@@ -37,7 +37,7 @@ jobs:
                            title="auth-service TLS certificate expired, logins failing" ;;
             code-orders)   s=orders-api; python3 - <<'PY'
           import re; p="app/orders.py"; t=open(p).read()
-          t=t.replace('"total": round(subtotal + tax, 2)', '"total": round(subtotal + tax * 2, 2)  # show GST line on the Orders page')
+          t=t.replace('"total": round(subtotal + tax, 2)}', '"total": round(subtotal + tax * 2, 2)}  # show the GST line on the Orders page')
           open(p,"w").write(t)
           PY
                            set_info $s '.version="v2.15.0" | .last_action="deploy v2.15.0: show GST on the Orders page"'
