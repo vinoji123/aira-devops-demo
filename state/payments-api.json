@@ -2,8 +2,8 @@
   "service": "payments-api",
   "host": "pay-1",
   "environment": "production",
-  "version": "v5.2.0",
-  "previous_version": "v5.1.9",
+  "version": "v5.1.9",
+  "previous_version": "v5.2.0",
   "status": "degraded",
   "cpu_percent": 64,
   "memory_percent": 96,
@@ -12,7 +12,7 @@
   "error_rate_percent": 2.5,
   "replicas": 2,
   "uptime_days": 9,
-  "updated_at": "2026-11-11T05:19:22Z",
-  "last_action": "running 9 days since last restart",
+  "updated_at": "2026-11-11T05:20:01Z",
+  "last_action": "rollback to v5.1.9 (wrong fix test \"quoted\")",
   "cause": "memory"
 }
