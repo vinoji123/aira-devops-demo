@@ -5,12 +5,12 @@
   "version": "v2.15.0",
   "previous_version": "v2.14.0",
   "status": "healthy",
-  "cpu_percent": 38,
-  "memory_percent": 52,
-  "disk_percent": 41,
-  "p95_latency_ms": 310,
-  "error_rate_percent": 0.2,
+  "cpu_percent": 30,
+  "memory_percent": 45,
+  "disk_percent": 40,
+  "p95_latency_ms": 300,
+  "error_rate_percent": 0.1,
   "replicas": 3,
-  "updated_at": "2026-11-11T11:22:22Z",
-  "last_action": "deploy v2.15.0: show GST on the Orders page"
+  "updated_at": "2026-11-11T11:23:01Z",
+  "last_action": "demo reset"
 }

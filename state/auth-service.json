@@ -5,13 +5,13 @@
   "version": "v1.9.0",
   "previous_version": "v1.8.7",
   "status": "healthy",
-  "cpu_percent": 18,
-  "memory_percent": 35,
-  "disk_percent": 29,
-  "p95_latency_ms": 150,
-  "error_rate_percent": 0,
+  "cpu_percent": 30,
+  "memory_percent": 45,
+  "disk_percent": 40,
+  "p95_latency_ms": 300,
+  "error_rate_percent": 0.1,
   "replicas": 2,
-  "cert_days_left": 90,
-  "updated_at": "2026-11-11T05:22:52Z",
-  "last_action": "renew certificate"
+  "cert_days_left": 64,
+  "updated_at": "2026-11-11T11:23:01Z",
+  "last_action": "demo reset"
 }
