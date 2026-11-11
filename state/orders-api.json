@@ -2,8 +2,8 @@
   "service": "orders-api",
   "host": "web-1",
   "environment": "production",
-  "version": "v2.13.4",
-  "previous_version": "v2.14.0",
+  "version": "v2.14.0",
+  "previous_version": "v2.13.4",
   "status": "healthy",
   "cpu_percent": 38,
   "memory_percent": 52,
@@ -11,6 +11,6 @@
   "p95_latency_ms": 310,
   "error_rate_percent": 0.2,
   "replicas": 3,
-  "updated_at": "2026-11-11T06:40:11Z",
-  "last_action": "rollback to v2.13.4 (SD-2 approved rollback)"
+  "updated_at": "2026-11-11T10:48:18Z",
+  "last_action": "rollback to v2.14.0 (Approved rollback: HighCPU SEV2 on web-1 — regression suspected in v2.14.0, rolling back to previous version)"
 }
