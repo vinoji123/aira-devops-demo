@@ -4,14 +4,15 @@
   "environment": "production",
   "version": "v1.9.0",
   "previous_version": "v1.8.7",
-  "status": "healthy",
+  "status": "degraded",
   "cpu_percent": 18,
   "memory_percent": 35,
   "disk_percent": 29,
   "p95_latency_ms": 150,
-  "error_rate_percent": 0.0,
+  "error_rate_percent": 100,
   "replicas": 2,
-  "cert_days_left": 64,
-  "updated_at": "2026-11-11T05:00:00Z",
-  "last_action": "initial"
+  "cert_days_left": -1,
+  "updated_at": "2026-11-11T05:22:30Z",
+  "last_action": "certificate auto-renewal failed",
+  "cause": "cert"
 }
